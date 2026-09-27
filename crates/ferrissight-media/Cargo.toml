@@ -1,0 +1,11 @@
+[package]
+name = "ferrissight-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ferrissight-core.workspace = true
+async-trait.workspace = true

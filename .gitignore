@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*
+secrets*
+target/
+data/
+recordings/
+cache/
+logs/
+config.local.*
+*.dump
+*.core
+*.mp4
+*.mkv
+*.wav
+
+# Local agent instructions and internal working material are never published.
+AGENTS.md
+agents.md
+internal-doc/

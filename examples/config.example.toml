@@ -1,0 +1,9 @@
+# Synthetic design example; Phase 0 does not load camera configuration yet.
+# Keep endpoint components separate from credentials.
+[camera]
+scheme = "rtsp"
+host = "192.0.2.10"
+port = 554
+path = "/example-stream"
+camera_username = "example"
+camera_password = "CHANGE_ME"

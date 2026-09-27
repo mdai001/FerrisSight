@@ -1,0 +1,3 @@
+[build]
+# Remap workspace source paths in compiler output and embedded source locations.
+rustflags = ["--remap-path-prefix=.=ferrissight"]
