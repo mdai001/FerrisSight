@@ -78,3 +78,39 @@ recording content, filesystem paths, account information, and unique persistent
 identifiers. Prefer collecting less. Recording retention, protected credential
 storage, authenticated remote access, cloud authorization, discovery, and complete
 release artifact scanning remain requirements for their future phases.
+
+## Phase 1A probe boundary
+
+The RTSP probe consumes separate endpoint components and redacted credentials.
+It never formats dependency errors, SDP, frame payloads, or transport metadata.
+The standalone runner disables dependency logging and replaces panic output with
+a fixed message. Its anonymous stdin pipe accepts private runtime input; no
+credential values are placed in command-line arguments, environment variables,
+configuration examples or files. Reports contain only profile indices, codec
+enums, codec-derived dimensions, frame-rate estimates, frame counts, audio-track
+presence, readability and teardown results. Frames remain in memory and are
+immediately discarded; there is no decoder, media sink, upload or recording.
+
+Local testing can reuse an explicitly selected OS credential-store entry through
+an ignored ONVIF helper. That helper and private device context are excluded from
+Git and external reviews. Linux production credential-store integration and a
+production Rust ONVIF adapter remain future work. Successful probing is not a
+long-term reliability, full video-decoding or recording validation.
+
+## Phase 1B recording boundary
+
+Recording is an explicit local operation. The bounded example stores compressed
+H.264 video only, using generated UUID/sequence filenames in an ignored directory.
+Container metadata is limited to codec parameters and media timing; reports omit
+paths, endpoints, names and accounts. No audio, thumbnails, embeddings, analytics
+or uploads are produced. Recordings must never enter external agent reviews or
+source packages. New Unix files request owner-only access; filesystem ACLs remain
+an operator responsibility. Dependency logs and panic details are suppressed by
+the example. There is no retention yet: explicitly created recordings remain
+local until the operator removes them, including incomplete `.partial` files.
+
+Cargo source packaging uses an anchored public-file allowlist in the root manifest.
+Git ignores alone may not exclude local files when packaging from a checkout
+without usable Git metadata. The Phase 1B workspace package listings were checked
+to exclude agent guidance, internal working documents and test media. Binary
+release path remapping and artifact scanning remain required before distribution.

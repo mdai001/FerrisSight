@@ -16,3 +16,6 @@ pub trait MediaStream: Send + Sync {
 pub trait MediaBackend: Send + Sync {
     async fn open(&self, source: MediaSource) -> Result<Box<dyn MediaStream>, FerrisSightError>;
 }
+
+pub mod probe;
+pub mod recording;

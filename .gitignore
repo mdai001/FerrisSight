@@ -13,6 +13,7 @@ logs/
 config.local.*
 *.dump
 *.core
+*.partial
 *.mp4
 *.mkv
 *.wav

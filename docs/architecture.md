@@ -10,7 +10,7 @@ Camera/device layer
 Protocol adapters (ONVIF, later vendor quirks)
     ↓ separate endpoint components and credentials
 Media layer
-    ↓ future local recording pipeline
+    ↓ bounded compressed H.264 recording pipeline
 Recording/storage
     ↓ gateway orchestration
 Gateway services
@@ -37,12 +37,16 @@ be persisted independently of mutable network endpoints.
 WS-Discovery, GetDeviceInformation, GetCapabilities, GetProfiles, GetStreamUri,
 PTZ and event probes. Vendor quirks belong in adapters and capability probes.
 
-`ferrissight-media` defines sources, backend open and stream stop. No encoded
-packet interface is added until a concrete consumer needs it. Future go2rtc,
+`ferrissight-media` defines sources, backend open and stream stop. Phase 1A adds
+a bounded RTSP-over-TCP probe implemented with Retina. The probe reports only
+allowlisted properties, discards compressed frames, detects video stalls, and
+awaits bounded teardown. Phase 1B adds a bounded recording function with explicit graceful shutdown and a
+bounded queue to a blocking MP4 worker. Future go2rtc,
 FFmpeg, GStreamer or retina adapters own process/library details; core does not.
 
 `ferrissight-storage` defines generated recording IDs, minimal metadata and store
-operations. It contains no database, media writing or cloud integration. Future
+operations. Phase 1B adds an H.264 MP4 segment sink with keyframe boundaries, timestamp
+validation and finalized-file publication. It contains no database or cloud integration. Future
 retention deletion must remove media as well as metadata. Uploads require explicit
 configuration, minimum OAuth scopes and protected tokens.
 

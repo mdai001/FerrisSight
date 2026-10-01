@@ -33,3 +33,5 @@ pub trait RecordingStore: Send + Sync {
     /// Implementations must remove associated media as well as metadata.
     async fn delete(&self, id: RecordingId) -> Result<(), FerrisSightError>;
 }
+
+pub mod mp4;

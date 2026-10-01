@@ -11,3 +11,6 @@ ferrissight-core.workspace = true
 serde.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
+thiserror.workspace = true
+mp4 = "0.14"
+bytes = "1"
