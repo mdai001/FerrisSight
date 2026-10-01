@@ -5,10 +5,7 @@ use ferrissight_storage::mp4::{
 };
 use futures_util::StreamExt;
 use retina::{
-    client::{
-        Credentials, PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions,
-        TeardownPolicy,
-    },
+    client::{PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions},
     codec::{CodecItem, ParametersRef, VideoParametersCodec},
 };
 use serde::Serialize;
@@ -53,6 +50,7 @@ pub struct RecordingReport {
     pub discarded_before_keyframe: u64,
     pub segments: Vec<SegmentReport>,
     pub clean_disconnect: bool,
+    pub keepalive: crate::rtsp::KeepaliveReport,
 }
 #[derive(Debug, thiserror::Error)]
 pub enum RecordError {
@@ -97,7 +95,7 @@ pub async fn record<F: Future<Output = ()>>(
     shutdown: F,
 ) -> Result<RecordingReport, RecordError> {
     if options.duration.is_zero()
-        || options.duration > Duration::from_secs(300)
+        || options.duration > Duration::from_secs(600)
         || options.segment_seconds == 0
         || options.segment_seconds > 60
     {
@@ -105,13 +103,7 @@ pub async fn record<F: Future<Output = ()>>(
     }
     let url = crate::probe::endpoint_url(endpoint).map_err(|_| RecordError::Configuration)?;
     let group = Arc::new(SessionGroup::default());
-    let session_options = SessionOptions::default()
-        .session_group(group.clone())
-        .teardown(TeardownPolicy::Auto)
-        .creds(Some(Credentials {
-            username: endpoint.credentials.username.expose_secret().into(),
-            password: endpoint.credentials.password.expose_secret().into(),
-        }));
+    let session_options = crate::rtsp::session_options(endpoint, group.clone());
     let result = record_inner(
         url,
         session_options,
@@ -262,6 +254,7 @@ async fn record_inner<F: Future<Output = ()>>(
             break;
         }
     }
+    let keepalive = demuxed.keepalive_stats().into();
     drop(demuxed);
     drop(sender);
     let config = match config {
@@ -288,6 +281,7 @@ async fn record_inner<F: Future<Output = ()>>(
         discarded_before_keyframe,
         segments,
         clean_disconnect: false,
+        keepalive,
     })
 }
 
@@ -378,4 +372,105 @@ mod tests {
             .unwrap()
             .unwrap();
     }
+}
+
+/// A bounded run may restart once. Each session has independent MP4 files and RTP time origin.
+#[derive(Debug, Serialize)]
+pub struct RecordingRunReport {
+    pub sessions: Vec<RecordingReport>,
+    pub reconnect_attempts: u32,
+    pub completed: bool,
+    /// Only fixed, redacted FerrisSight errors; never dependency error strings.
+    pub terminal_error: Option<String>,
+}
+/// One restart after a transport, stall or protocol failure, with one-second backoff.
+/// Failed sessions remain explicit in the report; segments are never joined across RTP resets.
+/// Packet loss, changed parameters, timestamp and storage failures are not retried.
+pub async fn record_reconnecting<F: Future<Output = ()>>(
+    endpoint: &StreamEndpoint,
+    camera_id: CameraId,
+    directory: &Path,
+    options: RecordingOptions,
+    shutdown: F,
+) -> Result<RecordingRunReport, RecordError> {
+    if options.duration.is_zero() || options.duration > Duration::from_secs(600) {
+        return Err(RecordError::Configuration);
+    }
+    let finish = Instant::now() + options.duration;
+    tokio::pin!(shutdown);
+    let mut run = RecordingRunReport {
+        sessions: Vec::new(),
+        reconnect_attempts: 0,
+        completed: false,
+        terminal_error: None,
+    };
+    for attempt in 0..=1 {
+        let remaining = finish.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        if attempt > 0 {
+            run.reconnect_attempts += 1;
+        }
+        let result = record(
+            endpoint,
+            camera_id,
+            directory,
+            RecordingOptions {
+                duration: remaining,
+                ..options
+            },
+            &mut shutdown,
+        )
+        .await;
+        let retry = match result {
+            Ok(report) => {
+                let retry = matches!(
+                    report.end,
+                    RecordingEnd::Disconnected
+                        | RecordingEnd::Stalled
+                        | RecordingEnd::ProtocolError
+                );
+                run.completed =
+                    matches!(report.end, RecordingEnd::Completed | RecordingEnd::Shutdown)
+                        && report.clean_disconnect
+                        && !report.segments.is_empty();
+                run.terminal_error = None;
+                run.sessions.push(report);
+                retry
+            }
+            Err(error)
+                if attempt == 0
+                    && matches!(
+                        error,
+                        RecordError::Connection
+                            | RecordError::Timeout
+                            | RecordError::NoFrames(
+                                RecordingEnd::Stalled
+                                    | RecordingEnd::Disconnected
+                                    | RecordingEnd::ProtocolError
+                            )
+                    ) =>
+            {
+                run.terminal_error = Some(error.to_string());
+                true
+            }
+            Err(error) if run.sessions.is_empty() => return Err(error),
+            Err(error) => {
+                run.terminal_error = Some(error.to_string());
+                false
+            }
+        };
+        if !retry || attempt == 1 {
+            break;
+        }
+        tokio::select! {
+            _ = &mut shutdown => break,
+            _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+        }
+        if Instant::now() >= finish {
+            break;
+        }
+    }
+    Ok(run)
 }

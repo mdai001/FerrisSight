@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["vendor/retina"]
 resolver = "2"
 
 [workspace.package]
@@ -31,7 +32,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = false
-include = ["/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/src/**", "/docs/**", "/examples/config.example.toml"]
+include = ["/Cargo.toml", "/Cargo.lock", "/LICENSE", "/README.md", "/src/**", "/docs/**", "/examples/config.example.toml", "/vendor/retina/**"]
 
 [dependencies]
 ferrissight-server.workspace = true
@@ -43,3 +44,6 @@ tracing-subscriber.workspace = true
 [profile.release]
 strip = true
 debug = false
+
+[patch.crates-io]
+retina = { path = "vendor/retina" }

@@ -114,3 +114,9 @@ Git ignores alone may not exclude local files when packaging from a checkout
 without usable Git metadata. The Phase 1B workspace package listings were checked
 to exclude agent guidance, internal working documents and test media. Binary
 release path remapping and artifact scanning remain required before distribution.
+
+Keepalive diagnostics expose only method enums, numeric success/fallback counts
+and fixed failure categories. Reconnection does not retain endpoint identifiers,
+session IDs or raw responses. The vendored dependency contains public production
+source only; its original recorded-device tests are excluded. Dependency logging
+must remain suppressed at every executable boundary handling real credentials.

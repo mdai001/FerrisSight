@@ -1,7 +1,7 @@
 //! Private runtime inputs arrive through an anonymous stdin pipe, never arguments/files.
 use ferrissight_core::CameraId;
 use ferrissight_core::{CameraCredentials, SecretString, StreamEndpoint};
-use ferrissight_media::recording::{record, RecordingEnd, RecordingOptions};
+use ferrissight_media::recording::{record_reconnecting, RecordingOptions};
 use serde::{Deserialize, Deserializer};
 use tokio::io::AsyncReadExt;
 
@@ -90,7 +90,7 @@ async fn main() -> std::process::ExitCode {
         duration: std::time::Duration::from_secs(input.duration_seconds),
         segment_seconds: 30,
     };
-    let result = record(
+    let result = record_reconnecting(
         &endpoint,
         CameraId::generate(),
         std::path::Path::new("recordings"),
@@ -98,7 +98,7 @@ async fn main() -> std::process::ExitCode {
         shutdown,
     )
     .await;
-    let passed = matches!(&result,Ok(r) if matches!(r.end,RecordingEnd::Completed|RecordingEnd::Shutdown) && r.clean_disconnect && !r.segments.is_empty());
+    let passed = matches!(&result, Ok(r) if r.completed);
     let value = match result {
         Ok(report) => serde_json::json!({"profile_index":0,"mode":"recording","report":report}),
         Err(error) => {

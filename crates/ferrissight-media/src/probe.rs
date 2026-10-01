@@ -2,10 +2,7 @@
 use ferrissight_core::{AudioCodec, StreamEndpoint, VideoCodec};
 use futures_util::StreamExt;
 use retina::{
-    client::{
-        Credentials, PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions,
-        TeardownPolicy,
-    },
+    client::{PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions},
     codec::{CodecItem, ParametersRef},
 };
 use serde::Serialize;
@@ -146,13 +143,7 @@ pub async fn probe(
     }
     let url = endpoint_url(endpoint)?;
     let group = Arc::new(SessionGroup::default());
-    let session_options = SessionOptions::default()
-        .session_group(group.clone())
-        .teardown(TeardownPolicy::Auto)
-        .creds(Some(Credentials {
-            username: endpoint.credentials.username.expose_secret().into(),
-            password: endpoint.credentials.password.expose_secret().into(),
-        }));
+    let session_options = crate::rtsp::session_options(endpoint, group.clone());
     let result = probe_inner(url, session_options, options).await;
     let clean = matches!(
         timeout(options.teardown_timeout, group.await_teardown()).await,

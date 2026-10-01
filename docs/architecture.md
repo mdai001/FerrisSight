@@ -41,7 +41,8 @@ PTZ and event probes. Vendor quirks belong in adapters and capability probes.
 a bounded RTSP-over-TCP probe implemented with Retina. The probe reports only
 allowlisted properties, discards compressed frames, detects video stalls, and
 awaits bounded teardown. Phase 1B adds a bounded recording function with explicit graceful shutdown and a
-bounded queue to a blocking MP4 worker. Future go2rtc,
+bounded queue to a blocking MP4 worker, shared adaptive keepalive policy and one
+bounded reconnect that keeps connection timelines separate. Future go2rtc,
 FFmpeg, GStreamer or retina adapters own process/library details; core does not.
 
 `ferrissight-storage` defines generated recording IDs, minimal metadata and store
