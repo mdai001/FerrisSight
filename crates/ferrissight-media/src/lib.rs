@@ -20,3 +20,5 @@ pub trait MediaBackend: Send + Sync {
 pub mod probe;
 pub mod recording;
 pub mod rtsp;
+
+pub mod minute;

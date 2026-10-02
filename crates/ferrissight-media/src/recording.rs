@@ -1,17 +1,22 @@
 //! Bounded, video-only RTSP recording. Dependency diagnostics must be suppressed by callers.
 use ferrissight_core::{CameraId, StreamEndpoint};
 use ferrissight_storage::mp4::{
-    H264Config, Mp4Segments, RecordingError, SegmentReport, VideoSample,
+    H264Config, Mp4Segments, RecordingError, SegmentReport, UtcMinuteTarget, VideoSample,
 };
 use futures_util::StreamExt;
 use retina::{
-    client::{PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions},
+    client::{PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions, Transport},
     codec::{CodecItem, ParametersRef, VideoParametersCodec},
 };
 use serde::Serialize;
-use std::{future::Future, path::Path, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    path::Path,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tokio::{
-    sync::mpsc,
+    sync::{mpsc, Semaphore},
     time::{timeout, timeout_at, Instant},
 };
 
@@ -51,6 +56,35 @@ pub struct RecordingReport {
     pub segments: Vec<SegmentReport>,
     pub clean_disconnect: bool,
     pub keepalive: crate::rtsp::KeepaliveReport,
+    pub timing: SessionTiming,
+}
+/// Gateway observations only; UTC mapping is not a claim of sensor capture time.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct SessionTiming {
+    pub setup_succeeded: bool,
+    pub setup_millis: u64,
+    pub teardown_millis: u64,
+    pub clean_teardown: bool,
+    pub first_received_unix_ms: Option<i64>,
+    pub last_received_unix_ms: Option<i64>,
+}
+pub(crate) fn unix_millis() -> Result<i64, RecordError> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
+        .ok_or(RecordError::Configuration)
+}
+pub(crate) struct MinuteContext {
+    pub window_start_unix_ms: i64,
+    pub deadline: Instant,
+    pub transport: Transport,
+    pub group: Arc<SessionGroup>,
+    pub storage_slots: Arc<Semaphore>,
+}
+pub(crate) struct RecordingAttempt {
+    pub result: Result<RecordingReport, RecordError>,
+    pub timing: SessionTiming,
 }
 #[derive(Debug, thiserror::Error)]
 pub enum RecordError {
@@ -94,6 +128,43 @@ pub async fn record<F: Future<Output = ()>>(
     options: RecordingOptions,
     shutdown: F,
 ) -> Result<RecordingReport, RecordError> {
+    record_attempt(endpoint, camera_id, directory, options, None, shutdown)
+        .await
+        .result
+}
+
+pub(crate) async fn record_attempt<F: Future<Output = ()>>(
+    endpoint: &StreamEndpoint,
+    camera_id: CameraId,
+    directory: &Path,
+    options: RecordingOptions,
+    context: Option<MinuteContext>,
+    shutdown: F,
+) -> RecordingAttempt {
+    let mut timing = SessionTiming::default();
+    let result = record_attempt_inner(
+        endpoint,
+        camera_id,
+        directory,
+        options,
+        context,
+        shutdown,
+        &mut timing,
+    )
+    .await;
+    RecordingAttempt { result, timing }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn record_attempt_inner<F: Future<Output = ()>>(
+    endpoint: &StreamEndpoint,
+    camera_id: CameraId,
+    directory: &Path,
+    options: RecordingOptions,
+    context: Option<MinuteContext>,
+    shutdown: F,
+    timing: &mut SessionTiming,
+) -> Result<RecordingReport, RecordError> {
     if options.duration.is_zero()
         || options.duration > Duration::from_secs(600)
         || options.segment_seconds == 0
@@ -102,7 +173,10 @@ pub async fn record<F: Future<Output = ()>>(
         return Err(RecordError::Configuration);
     }
     let url = crate::probe::endpoint_url(endpoint).map_err(|_| RecordError::Configuration)?;
-    let group = Arc::new(SessionGroup::default());
+    let group = context
+        .as_ref()
+        .map(|c| c.group.clone())
+        .unwrap_or_else(|| Arc::new(SessionGroup::default()));
     let session_options = crate::rtsp::session_options(endpoint, group.clone());
     let result = record_inner(
         url,
@@ -110,27 +184,42 @@ pub async fn record<F: Future<Output = ()>>(
         camera_id,
         directory,
         options,
+        context,
         shutdown,
+        timing,
     )
     .await;
+    let teardown_start = Instant::now();
     let clean = matches!(
         timeout(Duration::from_secs(5), group.await_teardown()).await,
         Ok(Ok(()))
     );
+    timing.teardown_millis = teardown_start.elapsed().as_millis() as u64;
+    timing.clean_teardown = clean;
     result.map(|mut report| {
         report.clean_disconnect = clean;
+        report.timing = timing.clone();
         report
     })
 }
+#[allow(clippy::too_many_arguments)]
 async fn record_inner<F: Future<Output = ()>>(
     url: url::Url,
     session_options: SessionOptions,
     camera_id: CameraId,
     directory: &Path,
     options: RecordingOptions,
+    context: Option<MinuteContext>,
     shutdown: F,
+    timing: &mut SessionTiming,
 ) -> Result<RecordingReport, RecordError> {
-    let (mut demuxed, index) = timeout(Duration::from_secs(5), async {
+    let setup_start = Instant::now();
+    let setup_timeout = context
+        .as_ref()
+        .map(|c| c.deadline.saturating_duration_since(setup_start))
+        .unwrap_or(Duration::from_secs(5))
+        .min(Duration::from_secs(5));
+    let setup_result = timeout(setup_timeout, async {
         let mut session = Session::describe(url, session_options)
             .await
             .map_err(|_| RecordError::Connection)?;
@@ -142,7 +231,15 @@ async fn record_inner<F: Future<Output = ()>>(
         for stream_index in 0..session.streams().len().min(16) {
             if stream_index == index || session.streams()[stream_index].media() == "audio" {
                 session
-                    .setup(stream_index, SetupOptions::default())
+                    .setup(
+                        stream_index,
+                        SetupOptions::default().transport(
+                            context
+                                .as_ref()
+                                .map(|c| c.transport.clone())
+                                .unwrap_or_default(),
+                        ),
+                    )
                     .await
                     .map_err(|_| RecordError::Connection)?;
             }
@@ -155,9 +252,14 @@ async fn record_inner<F: Future<Output = ()>>(
             .map_err(|_| RecordError::Connection)?;
         Ok::<_, RecordError>((demuxed, index))
     })
-    .await
-    .map_err(|_| RecordError::Timeout)??;
-    let finish = Instant::now() + options.duration;
+    .await;
+    timing.setup_millis = setup_start.elapsed().as_millis() as u64;
+    let (mut demuxed, index) = setup_result.map_err(|_| RecordError::Timeout)??;
+    timing.setup_succeeded = true;
+    let finish = context
+        .as_ref()
+        .map(|c| c.deadline)
+        .unwrap_or_else(|| Instant::now() + options.duration);
     let mut last_video = Instant::now();
     let mut config: Option<H264Config> = None;
     let mut sender = None;
@@ -189,6 +291,9 @@ async fn record_inner<F: Future<Output = ()>>(
             _ => continue,
         };
         last_video = Instant::now();
+        let received_utc = unix_millis()?;
+        timing.first_received_unix_ms.get_or_insert(received_utc);
+        timing.last_received_unix_ms = Some(received_utc);
         received += 1;
         if frame.loss() != 0 {
             end = RecordingEnd::PacketLoss;
@@ -221,10 +326,32 @@ async fn record_inner<F: Future<Output = ()>>(
             };
             let path = directory.to_path_buf();
             let cfg = current.clone();
+            let utc_target = context.as_ref().map(|c| UtcMinuteTarget {
+                camera_id,
+                window_start_unix_ms: c.window_start_unix_ms,
+                anchor_unix_ms: received_utc,
+                anchor_rtp_ticks: frame.timestamp().elapsed(),
+            });
             let (tx, mut rx) = mpsc::channel::<VideoSample>(16);
+            let storage_permit = match context.as_ref() {
+                Some(c) => Some(
+                    c.storage_slots
+                        .clone()
+                        .try_acquire_owned()
+                        .map_err(|_| RecordError::Worker)?,
+                ),
+                None => None,
+            };
             worker = Some(tokio::task::spawn_blocking(move || {
-                let mut sink =
-                    Mp4Segments::new(&path, cfg, options.segment_seconds, terminal_duration)?;
+                let _storage_permit = storage_permit;
+                let mut sink = match utc_target {
+                    Some(target) => {
+                        Mp4Segments::new_utc_minute(&path, cfg, terminal_duration, target)?
+                    }
+                    None => {
+                        Mp4Segments::new(&path, cfg, options.segment_seconds, terminal_duration)?
+                    }
+                };
                 while let Some(sample) = rx.blocking_recv() {
                     sink.push(sample)?
                 }
@@ -261,11 +388,15 @@ async fn record_inner<F: Future<Output = ()>>(
         Some(c) => c,
         None => return Err(RecordError::NoFrames(end)),
     };
-    let (segments, discarded_before_keyframe) = match worker
-        .ok_or(RecordError::Worker)?
-        .await
-        .map_err(|_| RecordError::Worker)?
-    {
+    let worker = worker.ok_or(RecordError::Worker)?;
+    let result = if context.is_some() {
+        timeout(Duration::from_secs(5), worker)
+            .await
+            .map_err(|_| RecordError::Worker)?
+    } else {
+        worker.await
+    };
+    let (segments, discarded_before_keyframe) = match result.map_err(|_| RecordError::Worker)? {
         Ok(result) => result,
         Err(RecordingError::Timestamp) => {
             return Err(RecordError::Storage(RecordingError::Timestamp))
@@ -282,6 +413,7 @@ async fn record_inner<F: Future<Output = ()>>(
         segments,
         clean_disconnect: false,
         keepalive,
+        timing: timing.clone(),
     })
 }
 

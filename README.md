@@ -3,7 +3,8 @@
 An open-source Rust camera gateway and lightweight NVR.
 
 Early-stage: the workspace provides a small HTTP service, bounded RTSP probing,
-and Phase 1B local H.264 recording into independently playable MP4 segments.
+Phase 1B local H.264 recording into independently playable MP4 segments,
+and the Phase 1C bounded UTC minute-session experiment.
 Recording copies compressed video without transcoding; audio is omitted. Camera
 discovery and the Rust ONVIF adapter remain unimplemented.
 
@@ -62,3 +63,5 @@ cargo build --workspace
 ## License
 
 Apache License 2.0 only. See [LICENSE](LICENSE).
+
+For the minute-session lifecycle and validation limits, see [UTC minute recording](docs/utc-minute-recording.md).

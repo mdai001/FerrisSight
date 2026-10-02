@@ -47,6 +47,12 @@ struct Input {
     duration_seconds: u64,
     #[serde(default)]
     shutdown_after_seconds: Option<u64>,
+    #[serde(default)]
+    minute_sessions: bool,
+    #[serde(default)]
+    profile_index: u8,
+    #[serde(default)]
+    udp: bool,
 }
 fn duration_default() -> u64 {
     120
@@ -90,20 +96,46 @@ async fn main() -> std::process::ExitCode {
         duration: std::time::Duration::from_secs(input.duration_seconds),
         segment_seconds: 30,
     };
-    let result = record_reconnecting(
-        &endpoint,
-        CameraId::generate(),
-        std::path::Path::new("recordings"),
-        options,
-        shutdown,
-    )
-    .await;
-    let passed = matches!(&result, Ok(r) if r.completed);
-    let value = match result {
-        Ok(report) => serde_json::json!({"profile_index":0,"mode":"recording","report":report}),
-        Err(error) => {
-            serde_json::json!({"profile_index":0,"mode":"recording","error":error.to_string()})
-        }
+    let (passed, value) = if input.minute_sessions {
+        let transport = if input.udp {
+            retina::client::Transport::Udp(Default::default())
+        } else {
+            Default::default()
+        };
+        let result=ferrissight_media::minute::record_minutes(
+            &endpoint, CameraId::generate(), std::path::Path::new("recordings"),
+            ferrissight_media::minute::MinuteRecordingOptions {duration:options.duration,transport},
+            shutdown, |window| println!("{}",serde_json::json!({"mode":"recording","profile_index":input.profile_index,"minute_window":window})),
+        ).await;
+        let passed = matches!(&result,Ok(r) if r.failed_windows==0 && r.unattempted_windows==0 && !r.shutdown_requested);
+        let value = match result {
+            Ok(report) => {
+                serde_json::json!({"profile_index":input.profile_index,"mode":"recording","minute_run":report})
+            }
+            Err(error) => {
+                serde_json::json!({"profile_index":input.profile_index,"mode":"recording","error":error.to_string()})
+            }
+        };
+        (passed, value)
+    } else {
+        let result = record_reconnecting(
+            &endpoint,
+            CameraId::generate(),
+            std::path::Path::new("recordings"),
+            options,
+            shutdown,
+        )
+        .await;
+        let passed = matches!(&result,Ok(r) if r.completed);
+        let value = match result {
+            Ok(report) => {
+                serde_json::json!({"profile_index":input.profile_index,"mode":"recording","report":report})
+            }
+            Err(error) => {
+                serde_json::json!({"profile_index":input.profile_index,"mode":"recording","error":error.to_string()})
+            }
+        };
+        (passed, value)
     };
     println!("{value}");
     if passed {

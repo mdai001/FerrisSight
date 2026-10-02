@@ -60,3 +60,9 @@ The data-directory option is reserved and unused until recording is implemented.
 Every layer follows [privacy requirements](privacy.md). No raw transport errors
 enter public responses or logs. Endpoint validation, credential storage and real
 connection lifecycle handling are future implementation work, not working features.
+
+Phase 1C adds an explicit bounded UTC-minute session scheduler in the media layer.
+Each natural minute owns a fresh RTSP session and immutable MP4/UTC metadata unit;
+failed windows remain visible and later windows still attempt recording. It is an
+interoperability experiment, with no daemon, upload or retention work. See
+[UTC minute recording](utc-minute-recording.md) for timing and validation limits.

@@ -49,6 +49,12 @@ impl fmt::Debug for StreamEndpoint {
 #[serde(transparent)]
 pub struct CameraId(Uuid);
 
+impl fmt::Display for CameraId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl CameraId {
     pub fn generate() -> Self {
         Self(Uuid::new_v4())

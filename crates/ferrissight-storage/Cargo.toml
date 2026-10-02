@@ -14,3 +14,5 @@ async-trait.workspace = true
 thiserror.workspace = true
 mp4 = "0.14"
 bytes = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+serde_json.workspace = true

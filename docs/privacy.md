@@ -120,3 +120,13 @@ and fixed failure categories. Reconnection does not retain endpoint identifiers,
 session IDs or raw responses. The vendored dependency contains public production
 source only; its original recorded-device tests are excluded. Dependency logging
 must remain suppressed at every executable boundary handling real credentials.
+
+## Phase 1C minute-session boundary
+
+UTC paths use generated CameraId, calendar components and an exclusive sequence.
+Sidecars persist only media properties, RTP intervals and explicitly labeled gateway
+UTC observations. They contain no endpoints, local paths, source configuration,
+accounts or device identifiers. Per-window diagnostics remain allowlisted; failed
+windows never reveal dependency errors. Live media and test metrics remain local.
+The example suppresses dependency logging and receives credentials only over an
+anonymous pipe. No cloud service or telemetry is introduced.
