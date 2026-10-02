@@ -130,3 +130,17 @@ accounts or device identifiers. Per-window diagnostics remain allowlisted; faile
 windows never reveal dependency errors. Live media and test metrics remain local.
 The example suppresses dependency logging and receives credentials only over an
 anonymous pipe. No cloud service or telemetry is introduced.
+
+
+## Bounded persistent-session comparison
+
+Persistent recording reuses the same credential, endpoint and media boundaries.
+Changing UTC files never creates a new camera identity or exports discovery data.
+Retry diagnostics contain only fixed error categories, counts and safe timing;
+public comparisons include aggregate media and process-resource metrics only.
+Credentials remain in the existing local secret-store/anonymous-pipe flow. Local
+test clips, per-file validation details and temporary scripts stay ignored and
+are excluded from package contents and external reviews. No cloud credentials,
+account inventory, telemetry or media upload is introduced. Future protected
+production credentials, complete binary release audits and retention remain
+separate work.

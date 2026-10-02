@@ -22,3 +22,5 @@ pub mod recording;
 pub mod rtsp;
 
 pub mod minute;
+
+pub mod persistent;

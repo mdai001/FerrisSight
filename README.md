@@ -82,3 +82,6 @@ cargo build --workspace
 Apache License 2.0 only. See [LICENSE](LICENSE).
 
 For the minute-session lifecycle and validation limits, see [UTC minute recording](docs/utc-minute-recording.md).
+
+For bounded minute-session versus persistent-session results, see
+[session recording comparison](docs/session-recording-comparison.md).

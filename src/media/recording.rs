@@ -81,6 +81,7 @@ pub(crate) struct MinuteContext {
     pub transport: Transport,
     pub group: Arc<SessionGroup>,
     pub storage_slots: Arc<Semaphore>,
+    pub rotate_utc_minutes: bool,
 }
 pub(crate) struct RecordingAttempt {
     pub result: Result<RecordingReport, RecordError>,
@@ -333,6 +334,7 @@ async fn record_inner<F: Future<Output = ()>>(
                 anchor_unix_ms: received_utc,
                 anchor_rtp_ticks: frame.timestamp().elapsed(),
             });
+            let rotate_utc_minutes = context.as_ref().is_some_and(|c| c.rotate_utc_minutes);
             let (tx, mut rx) = mpsc::channel::<VideoSample>(16);
             let storage_permit = match context.as_ref() {
                 Some(c) => Some(
@@ -346,6 +348,9 @@ async fn record_inner<F: Future<Output = ()>>(
             worker = Some(tokio::task::spawn_blocking(move || {
                 let _storage_permit = storage_permit;
                 let mut sink = match utc_target {
+                    Some(target) if rotate_utc_minutes => {
+                        Mp4Segments::new_utc_minutes(&path, cfg, terminal_duration, target)?
+                    }
                     Some(target) => {
                         Mp4Segments::new_utc_minute(&path, cfg, terminal_duration, target)?
                     }

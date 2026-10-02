@@ -61,17 +61,17 @@ pub struct MinuteRunReport {
 fn minute_floor(ms: i64) -> i64 {
     ms.div_euclid(60_000) * 60_000
 }
-fn clock_has_stepped(actual_ms: i64, projected_ms: i64) -> bool {
+pub(crate) fn clock_has_stepped(actual_ms: i64, projected_ms: i64) -> bool {
     actual_ms.abs_diff(projected_ms) > 1000
 }
-fn window_count(start: i64, end: i64) -> u64 {
+pub(crate) fn window_count(start: i64, end: i64) -> u64 {
     if end <= start {
         0
     } else {
         ((minute_floor(end - 1) - minute_floor(start)) / 60_000 + 1) as u64
     }
 }
-fn coverage(start: i64, end: i64, ranges: &mut [(i64, i64)]) -> (f64, Vec<f64>) {
+pub(crate) fn coverage(start: i64, end: i64, ranges: &mut [(i64, i64)]) -> (f64, Vec<f64>) {
     ranges.sort_unstable();
     let gaps = ranges
         .windows(2)
@@ -197,6 +197,7 @@ pub async fn record_minutes<F: Future<Output = ()>>(
                     transport: options.transport.clone(),
                     group: group.clone(),
                     storage_slots: storage_slots.clone(),
+                    rotate_utc_minutes: false,
                 }),
                 &mut shutdown,
             )

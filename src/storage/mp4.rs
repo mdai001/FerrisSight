@@ -82,6 +82,8 @@ pub struct Mp4Segments {
     reports: Vec<SegmentReport>,
     utc_target: Option<UtcMinuteTarget>,
     utc_directory: Option<PathBuf>,
+    utc_root_directory: Option<PathBuf>,
+    rotate_utc_minutes: bool,
     pub discarded_before_keyframe: u64,
 }
 impl Mp4Segments {
@@ -114,6 +116,8 @@ impl Mp4Segments {
             reports: Vec::new(),
             utc_target: None,
             utc_directory: None,
+            utc_root_directory: None,
+            rotate_utc_minutes: false,
             discarded_before_keyframe: 0,
         })
     }
@@ -134,15 +138,10 @@ impl Mp4Segments {
         {
             return Err(RecordingError::Configuration);
         }
-        let instant = chrono::DateTime::from_timestamp_millis(target.window_start_unix_ms)
-            .ok_or(RecordingError::Configuration)?;
-        let minute_dir = directory
-            .join(format!("camera-{}", target.camera_id))
-            .join(instant.format("%Y").to_string())
-            .join(instant.format("%m").to_string())
-            .join(instant.format("%d").to_string())
-            .join(instant.format("%H").to_string());
-        fs::create_dir_all(&minute_dir).map_err(|_| RecordingError::Storage)?;
+        let minute_dir = utc_minute_directory(
+            &directory.join(format!("camera-{}", target.camera_id)),
+            target.window_start_unix_ms,
+        )?;
         Ok(Self {
             directory: minute_dir.clone(),
             id: RecordingId::generate(),
@@ -155,8 +154,36 @@ impl Mp4Segments {
             reports: Vec::new(),
             utc_target: Some(target),
             utc_directory: Some(minute_dir),
+            utc_root_directory: Some(directory.join(format!("camera-{}", target.camera_id))),
+            rotate_utc_minutes: false,
             discarded_before_keyframe: 0,
         })
+    }
+    /// Rotate at the first keyframe in a new UTC minute without changing the RTSP session.
+    pub fn new_utc_minutes(
+        directory: &Path,
+        config: H264Config,
+        terminal_duration: u32,
+        target: UtcMinuteTarget,
+    ) -> Result<Self, RecordingError> {
+        let mut sink = Self::new_utc_minute(directory, config, terminal_duration, target)?;
+        sink.rotate_utc_minutes = true;
+        Ok(sink)
+    }
+    fn advance_utc_minute(&mut self, timestamp: i64) -> Result<(), RecordingError> {
+        let target = self
+            .utc_target
+            .as_mut()
+            .ok_or(RecordingError::Configuration)?;
+        let mapped = timestamp_to_unix_ms(*target, timestamp, self.config.timescale)?;
+        target.window_start_unix_ms = mapped.div_euclid(60_000) * 60_000;
+        self.utc_directory = Some(utc_minute_directory(
+            self.utc_root_directory
+                .as_ref()
+                .ok_or(RecordingError::Configuration)?,
+            target.window_start_unix_ms,
+        )?);
+        Ok(())
     }
     fn start(&mut self, timestamp: i64) -> Result<(), RecordingError> {
         let (partial, completed, utc_timing) = if let (Some(target), Some(directory)) =
@@ -349,6 +376,9 @@ impl Mp4Segments {
                 self.discarded_before_keyframe += 1;
                 return Ok(());
             }
+            if self.rotate_utc_minutes {
+                self.advance_utc_minute(sample.timestamp)?;
+            }
             self.start(sample.timestamp)?;
         }
         if let Some(previous) = self.pending.as_ref() {
@@ -363,8 +393,20 @@ impl Mp4Segments {
             self.write_pending(duration)?;
         }
         let first = self.active.as_ref().unwrap().first;
-        if sample.keyframe && sample.timestamp - first >= self.segment_ticks {
+        let crossed_minute = if self.rotate_utc_minutes {
+            let target = self.utc_target.ok_or(RecordingError::Configuration)?;
+            timestamp_to_unix_ms(target, sample.timestamp, self.config.timescale)?
+                .div_euclid(60_000)
+                * 60_000
+                > target.window_start_unix_ms
+        } else {
+            false
+        };
+        if sample.keyframe && (crossed_minute || sample.timestamp - first >= self.segment_ticks) {
             self.finalize(sample.timestamp)?;
+            if self.rotate_utc_minutes {
+                self.advance_utc_minute(sample.timestamp)?;
+            }
             self.start(sample.timestamp)?;
         }
         self.pending = Some(sample);
@@ -382,6 +424,18 @@ impl Mp4Segments {
         }
         Ok((self.reports, self.discarded_before_keyframe))
     }
+}
+
+fn utc_minute_directory(directory: &Path, minute_ms: i64) -> Result<PathBuf, RecordingError> {
+    let instant =
+        chrono::DateTime::from_timestamp_millis(minute_ms).ok_or(RecordingError::Configuration)?;
+    let path = directory
+        .join(instant.format("%Y").to_string())
+        .join(instant.format("%m").to_string())
+        .join(instant.format("%d").to_string())
+        .join(instant.format("%H").to_string());
+    fs::create_dir_all(&path).map_err(|_| RecordingError::Storage)?;
+    Ok(path)
 }
 
 fn timestamp_to_unix_ms(
@@ -598,6 +652,96 @@ mod tests {
             assert_eq!(pair[0].end_timestamp, pair[1].first_timestamp);
         }
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn persistent_utc_rotation_preserves_all_frames_across_year_and_keyframe_boundary() {
+        let root =
+            std::env::temp_dir().join(format!("ferrissight-test-{}", RecordingId::generate().0));
+        let camera_id = CameraId::generate();
+        let minute = chrono::DateTime::parse_from_rfc3339("2026-12-31T23:59:00Z")
+            .unwrap()
+            .timestamp_millis();
+        let target = UtcMinuteTarget {
+            camera_id,
+            window_start_unix_ms: minute,
+            anchor_unix_ms: minute + 59_500,
+            anchor_rtp_ticks: 0,
+        };
+        let mut sink = Mp4Segments::new_utc_minutes(&root, config(), 250, target).unwrap();
+        for i in 0..8 {
+            sink.push(VideoSample {
+                timestamp: i * 250,
+                keyframe: i % 4 == 0,
+                data: vec![0, 0, 0, 2, if i % 4 == 0 { 0x65 } else { 0x41 }, 0x80],
+            })
+            .unwrap();
+        }
+        let (reports, dropped) = sink.finish().unwrap();
+        assert_eq!(dropped, 0);
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports.iter().map(|r| r.frames).sum::<u64>(), 8);
+        assert_eq!(reports[0].end_timestamp, reports[1].first_timestamp);
+        assert_eq!(
+            reports[0].utc_timing.as_ref().unwrap().end_frame_unix_ms,
+            reports[1].utc_timing.as_ref().unwrap().first_frame_unix_ms
+        );
+        assert_eq!(
+            reports[1]
+                .utc_timing
+                .as_ref()
+                .unwrap()
+                .logical_minute_start_unix_ms,
+            minute + 60_000
+        );
+        let camera = root.join(format!("camera-{camera_id}"));
+        for path in [
+            camera.join("2026/12/31/23/59_000.mp4"),
+            camera.join("2027/01/01/00/00_000.mp4"),
+        ] {
+            let file = File::open(path).unwrap();
+            let len = file.metadata().unwrap().len();
+            let mut reader = mp4::Mp4Reader::read_header(file, len).unwrap();
+            assert_eq!(reader.sample_count(1).unwrap(), 4);
+            assert!(reader.read_sample(1, 1).unwrap().unwrap().is_sync);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn persistent_first_keyframe_uses_actual_minute_after_initial_delay() {
+        let root =
+            std::env::temp_dir().join(format!("ferrissight-test-{}", RecordingId::generate().0));
+        let target = UtcMinuteTarget {
+            camera_id: CameraId::generate(),
+            window_start_unix_ms: 0,
+            anchor_unix_ms: 59_500,
+            anchor_rtp_ticks: 0,
+        };
+        let mut sink = Mp4Segments::new_utc_minutes(&root, config(), 250, target).unwrap();
+        sink.push(VideoSample {
+            timestamp: 0,
+            keyframe: false,
+            data: vec![],
+        })
+        .unwrap();
+        sink.push(VideoSample {
+            timestamp: 1000,
+            keyframe: true,
+            data: vec![0, 0, 0, 1, 0x65],
+        })
+        .unwrap();
+        let (reports, dropped) = sink.finish().unwrap();
+        assert_eq!(dropped, 1);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(
+            reports[0]
+                .utc_timing
+                .as_ref()
+                .unwrap()
+                .logical_minute_start_unix_ms,
+            60_000
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

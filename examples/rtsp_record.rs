@@ -50,6 +50,8 @@ struct Input {
     #[serde(default)]
     minute_sessions: bool,
     #[serde(default)]
+    persistent_sessions: bool,
+    #[serde(default)]
     profile_index: u8,
     #[serde(default)]
     udp: bool,
@@ -78,7 +80,9 @@ async fn main() -> std::process::ExitCode {
         None
     };
     bytes.fill(0);
-    let Some(input) = input.filter(|i| i.sources.len() == 1) else {
+    let Some(input) =
+        input.filter(|i| i.sources.len() == 1 && !(i.minute_sessions && i.persistent_sessions))
+    else {
         eprintln!("invalid recording input");
         return std::process::ExitCode::FAILURE;
     };
@@ -96,7 +100,36 @@ async fn main() -> std::process::ExitCode {
         duration: std::time::Duration::from_secs(input.duration_seconds),
         segment_seconds: 30,
     };
-    let (passed, value) = if input.minute_sessions {
+    let (passed, value) = if input.persistent_sessions {
+        let transport = if input.udp {
+            retina::client::Transport::Udp(Default::default())
+        } else {
+            Default::default()
+        };
+        let result = ferrissight::media::persistent::record_persistent(
+            &endpoint,
+            CameraId::generate(),
+            std::path::Path::new("recordings"),
+            ferrissight::media::persistent::PersistentRecordingOptions {
+                duration: options.duration,
+                transport,
+            },
+            shutdown,
+            |_| {},
+        )
+        .await;
+        let passed = matches!(&result, Ok(r) if !r.shutdown_requested && r.attempts.last()
+            .and_then(|a| a.recording.as_ref()).is_some_and(|s| s.end == ferrissight::media::recording::RecordingEnd::Completed));
+        let value = match result {
+            Ok(report) => {
+                serde_json::json!({"profile_index":input.profile_index,"mode":"recording","persistent_run":report})
+            }
+            Err(error) => {
+                serde_json::json!({"profile_index":input.profile_index,"mode":"recording","error":error.to_string()})
+            }
+        };
+        (passed, value)
+    } else if input.minute_sessions {
         let transport = if input.udp {
             retina::client::Transport::Udp(Default::default())
         } else {
