@@ -1,6 +1,6 @@
 //! Private runtime inputs arrive through an anonymous stdin pipe, never arguments/files.
-use ferrissight_core::{CameraCredentials, SecretString, StreamEndpoint};
-use ferrissight_media::probe::{probe, ProbeOptions};
+use ferrissight::core::{CameraCredentials, SecretString, StreamEndpoint};
+use ferrissight::media::probe::{probe, ProbeOptions};
 use serde::{Deserialize, Deserializer};
 use tokio::io::AsyncReadExt;
 

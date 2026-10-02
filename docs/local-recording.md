@@ -6,7 +6,7 @@ Retina RTSP-over-TCP path as probing. Profile selection and ONVIF authentication
 GetProfiles and GetStreamUri remain in the local integration helper; the Rust
 ONVIF adapter is still unimplemented. There is no camera-model logic in recording.
 
-Build with `cargo build -p ferrissight-media --example rtsp_record`. The runner
+Build with `cargo build --example rtsp_record`. The runner
 accepts one source through an anonymous stdin pipe using the same source schema
 as the probing example. Optional top-level `duration_seconds` and
 `shutdown_after_seconds` control a bounded run and graceful timed shutdown.
@@ -14,8 +14,8 @@ Use an OS credential store/local credential prompt and do not put actual endpoin
 or credential values into shell history, committed configuration or input files.
 Ctrl-C and Unix SIGTERM also request graceful finalization. Outputs are safe JSON reports only.
 
-The media layer sends compressed length-prefixed H.264 samples through a bounded
-queue to a blocking storage worker. The storage layer uses the established `mp4`
+The `media` module sends compressed length-prefixed H.264 samples through a bounded
+queue to a blocking `storage` worker. The storage module uses the established `mp4`
 crate to remux those samples without decoding or transcoding. Audio is omitted.
 Files are written in the runner's `recordings/` working-directory subdirectory,
 which is ignored by Git. A generated recording UUID plus sequence identifies

@@ -1,7 +1,7 @@
 //! Private runtime inputs arrive through an anonymous stdin pipe, never arguments/files.
-use ferrissight_core::CameraId;
-use ferrissight_core::{CameraCredentials, SecretString, StreamEndpoint};
-use ferrissight_media::recording::{record_reconnecting, RecordingOptions};
+use ferrissight::core::CameraId;
+use ferrissight::core::{CameraCredentials, SecretString, StreamEndpoint};
+use ferrissight::media::recording::{record_reconnecting, RecordingOptions};
 use serde::{Deserialize, Deserializer};
 use tokio::io::AsyncReadExt;
 
@@ -102,9 +102,9 @@ async fn main() -> std::process::ExitCode {
         } else {
             Default::default()
         };
-        let result=ferrissight_media::minute::record_minutes(
+        let result=ferrissight::media::minute::record_minutes(
             &endpoint, CameraId::generate(), std::path::Path::new("recordings"),
-            ferrissight_media::minute::MinuteRecordingOptions {duration:options.duration,transport},
+            ferrissight::media::minute::MinuteRecordingOptions {duration:options.duration,transport},
             shutdown, |window| println!("{}",serde_json::json!({"mode":"recording","profile_index":input.profile_index,"minute_window":window})),
         ).await;
         let passed = matches!(&result,Ok(r) if r.failed_windows==0 && r.unattempted_windows==0 && !r.shutdown_requested);

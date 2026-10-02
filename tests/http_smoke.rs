@@ -7,7 +7,7 @@ async fn listener_serves_health_and_shuts_down() {
         .unwrap();
     let address = listener.local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel();
-    let server = tokio::spawn(ferrissight_server::serve(listener, async {
+    let server = tokio::spawn(ferrissight::server::serve(listener, async {
         let _ = stopped.await;
     }));
     tokio::time::timeout(std::time::Duration::from_secs(5), async {

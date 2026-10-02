@@ -1,5 +1,5 @@
+use crate::core::CameraId;
 use axum::{routing::get, Json, Router};
-use ferrissight_core::CameraId;
 use serde::Serialize;
 
 /// Public API allowlist: no user-provided name or endpoint information.

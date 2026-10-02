@@ -76,7 +76,7 @@ are meaningful for a stable clock; clock events must be reviewed separately.
 
 ## Bounded runner and privacy
 
-Build `cargo build -p ferrissight-media --example rtsp_record`. The example accepts
+Build `cargo build --example rtsp_record`. The example accepts
 runtime endpoint components and protected credentials through an anonymous stdin
 pipe, with `minute_sessions: true` and `duration_seconds` between 1 and 3600.
 `profile_index` is a synthetic report label supplied by the local ONVIF adapter.

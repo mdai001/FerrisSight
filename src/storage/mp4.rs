@@ -1,5 +1,5 @@
 //! Video-only H.264 remuxing. No codec decoding, filesystem paths or source identity in reports.
-use crate::{CameraId, RecordingId};
+use super::{CameraId, RecordingId};
 use bytes::Bytes;
 use mp4::{AvcConfig, Mp4Config, Mp4Sample, Mp4Writer, TrackConfig};
 use serde::Serialize;

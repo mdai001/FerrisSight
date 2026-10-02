@@ -1,5 +1,5 @@
 //! Shared generic RTSP policy. Never format dependency errors or transport diagnostics.
-use ferrissight_core::StreamEndpoint;
+use crate::core::StreamEndpoint;
 use retina::client::{
     Credentials, KeepaliveMethod, KeepalivePolicy, KeepaliveStats, SessionGroup, SessionOptions,
     TeardownPolicy,

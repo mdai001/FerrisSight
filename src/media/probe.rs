@@ -1,5 +1,5 @@
 //! Bounded RTSP-over-TCP probing. Frames are discarded without decoding or storage.
-use ferrissight_core::{AudioCodec, StreamEndpoint, VideoCodec};
+use crate::core::{AudioCodec, StreamEndpoint, VideoCodec};
 use futures_util::StreamExt;
 use retina::{
     client::{PlayOptions, Session, SessionGroup, SessionOptions, SetupOptions},
@@ -143,7 +143,7 @@ pub async fn probe(
     }
     let url = endpoint_url(endpoint)?;
     let group = Arc::new(SessionGroup::default());
-    let session_options = crate::rtsp::session_options(endpoint, group.clone());
+    let session_options = crate::media::rtsp::session_options(endpoint, group.clone());
     let result = probe_inner(url, session_options, options).await;
     let clean = matches!(
         timeout(options.teardown_timeout, group.await_teardown()).await,
@@ -273,7 +273,7 @@ async fn probe_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferrissight_core::{CameraCredentials, SecretString};
+    use crate::core::{CameraCredentials, SecretString};
     fn endpoint() -> StreamEndpoint {
         StreamEndpoint {
             scheme: "rtsp".into(),

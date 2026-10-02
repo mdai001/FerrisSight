@@ -68,14 +68,7 @@ async fn main() -> std::process::ExitCode {
         log_level,
     } = cli.command;
     // Filter dependencies out: their future transport logs may include network data.
-    let filter = tracing_subscriber::filter::Targets::new()
-        .with_target("ferrissight", log_level)
-        .with_target("ferrissight_server", log_level)
-        .with_target("ferrissight_core", log_level)
-        .with_target("ferrissight_camera", log_level)
-        .with_target("ferrissight_onvif", log_level)
-        .with_target("ferrissight_media", log_level)
-        .with_target("ferrissight_storage", log_level);
+    let filter = tracing_subscriber::filter::Targets::new().with_target("ferrissight", log_level);
     use tracing_subscriber::prelude::*;
     tracing_subscriber::registry()
         .with(
@@ -100,7 +93,10 @@ async fn main() -> std::process::ExitCode {
         }
     };
     tracing::info!(service = "gateway", event = "started");
-    if ferrissight_server::serve(listener, shutdown).await.is_err() {
+    if ferrissight::server::serve(listener, shutdown)
+        .await
+        .is_err()
+    {
         tracing::error!(service = "gateway", event = "server_failed");
         return std::process::ExitCode::FAILURE;
     }

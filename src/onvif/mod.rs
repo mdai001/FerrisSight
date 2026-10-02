@@ -1,8 +1,8 @@
 //! Future WS-Discovery, device information, capabilities, profiles, stream URI,
 //! PTZ and event probes. No SOAP or network discovery is implemented in Phase 0.
+use crate::camera::{CameraDevice, CameraProvider};
+use crate::core::{CameraInfo, FerrisSightError, StreamEndpoint};
 use async_trait::async_trait;
-use ferrissight_camera::{CameraDevice, CameraProvider};
-use ferrissight_core::{CameraInfo, FerrisSightError, StreamEndpoint};
 
 #[derive(Default)]
 pub struct OnvifProvider;

@@ -1,6 +1,6 @@
 # Phase 1A RTSP probing
 
-`ferrissight_media::probe::probe` accepts a structured `StreamEndpoint` and bounded
+`ferrissight::media::probe::probe` accepts a structured `StreamEndpoint` and bounded
 `ProbeOptions`. It uses Retina for RTSP authentication, RTP demultiplexing and
 codec parameter parsing. Credentials are passed separately from a credential-free
 URL. It supports no recording, transcoding, playback UI or cloud integration.
@@ -26,7 +26,7 @@ logs; the example disables logs completely.
 Build the runner with:
 
 ```sh
-cargo build -p ferrissight-media --example rtsp_probe
+cargo build --example rtsp_probe
 ```
 
 The runner accepts exactly two source objects through an anonymous stdin pipe,

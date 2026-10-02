@@ -1,9 +1,9 @@
 //! UTC natural-minute fault isolation. No endpoint or dependency diagnostics in reports.
-use crate::recording::{
+use crate::core::{CameraId, StreamEndpoint};
+use crate::media::recording::{
     record_attempt, unix_millis, MinuteContext, RecordError, RecordingEnd, RecordingOptions,
     RecordingReport, SessionTiming,
 };
-use ferrissight_core::{CameraId, StreamEndpoint};
 use retina::client::{SessionGroup, Transport};
 use serde::Serialize;
 use std::{future::Future, path::Path, sync::Arc, time::Duration};

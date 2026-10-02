@@ -1,8 +1,8 @@
 //! Vendor-neutral camera boundaries; protocol adapters implement these traits.
-use async_trait::async_trait;
-use ferrissight_core::{
+use crate::core::{
     CameraCapabilities, CameraInfo, CameraStatus, FerrisSightError, StreamEndpoint, StreamProfile,
 };
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait CameraProvider: Send + Sync {

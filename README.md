@@ -2,7 +2,7 @@
 
 An open-source Rust camera gateway and lightweight NVR.
 
-Early-stage: the workspace provides a small HTTP service, bounded RTSP probing,
+Early-stage: the Rust package provides a small HTTP service, bounded RTSP probing,
 Phase 1B local H.264 recording into independently playable MP4 segments,
 and the Phase 1C bounded UTC minute-session experiment.
 Recording copies compressed video without transcoding; audio is omitted. Camera
@@ -26,8 +26,25 @@ vendor quirks outside the core. Media backends will use mature existing tools or
 libraries. Phase 0 excludes a full NVR, transcoding, authentication, cloud backup,
 AI detection, UI, mobile apps and infrastructure orchestration.
 
-The workspace contains core domain types, camera interfaces, an explicitly
-unimplemented ONVIF adapter, media and storage interfaces, and the Axum server.
+The `ferrissight` package contains core domain types, camera interfaces, an
+explicitly unimplemented ONVIF adapter, media and storage modules, and the Axum
+server. All first-party Rust implementation code lives under one `src/`:
+
+```text
+src/
+  main.rs       # gateway executable
+  lib.rs        # shared module entry point
+  core/         # domain types and redacted secrets
+  camera/       # camera interfaces
+  onvif/        # protocol adapter boundary
+  media/        # RTSP probing and recording sessions
+  storage/      # MP4 output and metadata
+  server/       # HTTP API
+examples/       # bounded probe and recording runners
+tests/          # integration tests
+vendor/retina/  # third-party RTSP library
+```
+
 See [architecture](docs/architecture.md), [RTSP probing](docs/rtsp-probing.md),
 [local recording](docs/local-recording.md), and [privacy](docs/privacy.md).
 

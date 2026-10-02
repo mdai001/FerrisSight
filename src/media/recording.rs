@@ -1,6 +1,6 @@
 //! Bounded, video-only RTSP recording. Dependency diagnostics must be suppressed by callers.
-use ferrissight_core::{CameraId, StreamEndpoint};
-use ferrissight_storage::mp4::{
+use crate::core::{CameraId, StreamEndpoint};
+use crate::storage::mp4::{
     H264Config, Mp4Segments, RecordingError, SegmentReport, UtcMinuteTarget, VideoSample,
 };
 use futures_util::StreamExt;
@@ -55,7 +55,7 @@ pub struct RecordingReport {
     pub discarded_before_keyframe: u64,
     pub segments: Vec<SegmentReport>,
     pub clean_disconnect: bool,
-    pub keepalive: crate::rtsp::KeepaliveReport,
+    pub keepalive: crate::media::rtsp::KeepaliveReport,
     pub timing: SessionTiming,
 }
 /// Gateway observations only; UTC mapping is not a claim of sensor capture time.
@@ -172,12 +172,13 @@ async fn record_attempt_inner<F: Future<Output = ()>>(
     {
         return Err(RecordError::Configuration);
     }
-    let url = crate::probe::endpoint_url(endpoint).map_err(|_| RecordError::Configuration)?;
+    let url =
+        crate::media::probe::endpoint_url(endpoint).map_err(|_| RecordError::Configuration)?;
     let group = context
         .as_ref()
         .map(|c| c.group.clone())
         .unwrap_or_else(|| Arc::new(SessionGroup::default()));
-    let session_options = crate::rtsp::session_options(endpoint, group.clone());
+    let session_options = crate::media::rtsp::session_options(endpoint, group.clone());
     let result = record_inner(
         url,
         session_options,
@@ -420,7 +421,7 @@ async fn record_inner<F: Future<Output = ()>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ferrissight_core::{CameraCredentials, SecretString};
+    use crate::core::{CameraCredentials, SecretString};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[tokio::test]

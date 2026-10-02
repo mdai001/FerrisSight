@@ -365,81 +365,22 @@ checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
 name = "ferrissight"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
+ "bytes",
+ "chrono",
  "clap",
- "ferrissight-server",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "ferrissight-camera"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "ferrissight-core",
-]
-
-[[package]]
-name = "ferrissight-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "uuid",
-]
-
-[[package]]
-name = "ferrissight-media"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "ferrissight-core",
- "ferrissight-storage",
  "futures-util",
+ "mp4",
  "retina",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
-name = "ferrissight-onvif"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "ferrissight-camera",
- "ferrissight-core",
-]
-
-[[package]]
-name = "ferrissight-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "ferrissight-core",
- "serde",
- "tokio",
  "tower",
  "tracing",
-]
-
-[[package]]
-name = "ferrissight-storage"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "chrono",
- "ferrissight-core",
- "mp4",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
+ "tracing-subscriber",
+ "url",
  "uuid",
 ]
 

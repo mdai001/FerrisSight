@@ -1,7 +1,7 @@
 //! Local recording metadata, retention and future explicit upload queues.
 //! Cloud adapters require minimum OAuth scopes and protected token storage.
+use crate::core::{CameraId, FerrisSightError};
 use async_trait::async_trait;
-use ferrissight_core::{CameraId, FerrisSightError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
