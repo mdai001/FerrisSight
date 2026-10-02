@@ -1,4 +1,5 @@
 use crate::core::CameraId;
+use crate::storage::{local::StorageConfig, service::StorageService};
 use axum::{routing::get, Json, Router};
 use serde::Serialize;
 
@@ -15,7 +16,18 @@ struct Health {
 }
 
 pub fn app() -> Router {
+    app_with_storage(StorageService::unavailable(&StorageConfig::default()))
+}
+
+pub fn app_with_storage(storage: StorageService) -> Router {
     Router::new()
+        .route(
+            "/api/v1/storage",
+            get(move || {
+                let status = storage.snapshot();
+                async move { Json(status) }
+            }),
+        )
         .route(
             "/health",
             get(|| async {
@@ -38,6 +50,17 @@ pub async fn serve(
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> std::io::Result<()> {
     axum::serve(listener, app())
+        .with_graceful_shutdown(shutdown)
+        .await
+}
+
+/// Serve aggregate storage status alongside existing safe API routes.
+pub async fn serve_with_storage(
+    listener: tokio::net::TcpListener,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+    storage: StorageService,
+) -> std::io::Result<()> {
+    axum::serve(listener, app_with_storage(storage))
         .with_graceful_shutdown(shutdown)
         .await
 }

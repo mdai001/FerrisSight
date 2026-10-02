@@ -35,3 +35,6 @@ pub trait RecordingStore: Send + Sync {
 }
 
 pub mod mp4;
+
+pub mod local;
+pub mod service;

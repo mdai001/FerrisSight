@@ -60,6 +60,7 @@ pub struct UtcMinuteTarget {
     pub anchor_rtp_ticks: i64,
 }
 struct ActiveSegment {
+    segment_id: RecordingId,
     writer: Mp4Writer<File>,
     partial: PathBuf,
     completed: PathBuf,
@@ -186,6 +187,9 @@ impl Mp4Segments {
         Ok(())
     }
     fn start(&mut self, timestamp: i64) -> Result<(), RecordingError> {
+        // Retention may remove an empty UTC directory between construction and first IDR.
+        fs::create_dir_all(self.utc_directory.as_ref().unwrap_or(&self.directory))
+            .map_err(|_| RecordingError::Storage)?;
         let (partial, completed, utc_timing) = if let (Some(target), Some(directory)) =
             (self.utc_target, self.utc_directory.as_ref())
         {
@@ -217,6 +221,10 @@ impl Mp4Segments {
                         break;
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        fs::create_dir_all(directory).map_err(|_| RecordingError::Storage)?;
+                        continue;
+                    }
                     Err(_) => return Err(RecordingError::Storage),
                 }
             }
@@ -262,6 +270,7 @@ impl Mp4Segments {
             .add_track(&track)
             .map_err(|_| RecordingError::Storage)?;
         self.active = Some(ActiveSegment {
+            segment_id: RecordingId::generate(),
             writer,
             partial,
             completed,
@@ -326,6 +335,7 @@ impl Mp4Segments {
                 timestamp_basis: "gateway_receive_anchor_plus_rtp_elapsed",
             };
             let metadata = serde_json::json!({
+                "segmentId": active.segment_id,
                 "cameraId": target.camera_id,
                 "codec": "H264",
                 "resolution": { "width": self.config.width, "height": self.config.height },
@@ -357,7 +367,17 @@ impl Mp4Segments {
         if active.completed.exists() {
             return Err(RecordingError::Storage);
         }
+        // Hold the directory before publishing. Explicit capacity eviction may remove the
+        // newly finalized file and prune its path immediately after the rename.
+        #[cfg(unix)]
+        let publication_directory =
+            File::open(active.completed.parent().ok_or(RecordingError::Storage)?)
+                .map_err(|_| RecordingError::Storage)?;
         fs::rename(&active.partial, &active.completed).map_err(|_| RecordingError::Storage)?;
+        #[cfg(unix)]
+        publication_directory
+            .sync_all()
+            .map_err(|_| RecordingError::Storage)?;
         self.reports.push(SegmentReport {
             sequence: self.sequence,
             frames: active.frames,
@@ -435,6 +455,15 @@ fn utc_minute_directory(directory: &Path, minute_ms: i64) -> Result<PathBuf, Rec
         .join(instant.format("%d").to_string())
         .join(instant.format("%H").to_string());
     fs::create_dir_all(&path).map_err(|_| RecordingError::Storage)?;
+    // Newly created UTC ancestors must also survive a reboot on local Unix filesystems.
+    let mut parent = Some(path.as_path());
+    while let Some(p) = parent {
+        crate::storage::local::sync_directory(p).map_err(|_| RecordingError::Storage)?;
+        if Some(p) == directory.parent() {
+            break;
+        }
+        parent = p.parent();
+    }
     Ok(path)
 }
 
@@ -533,11 +562,18 @@ mod tests {
                 "cameraId",
                 "codec",
                 "resolution",
+                "segmentId",
                 "segmentReport",
                 "utcTiming"
             ]
             .into_iter()
             .collect()
+        );
+        assert_eq!(
+            uuid::Uuid::parse_str(metadata["segmentId"].as_str().unwrap())
+                .unwrap()
+                .get_version_num(),
+            4
         );
         let file = File::open(dir.join("00_000.mp4")).unwrap();
         let len = file.metadata().unwrap().len();
@@ -550,6 +586,9 @@ mod tests {
         push_utc_samples(&mut second);
         second.finish().unwrap();
         assert!(dir.join("00_001.mp4").is_file());
+        let next_metadata: serde_json::Value =
+            serde_json::from_slice(&fs::read(dir.join("00_001.json")).unwrap()).unwrap();
+        assert_ne!(metadata["segmentId"], next_metadata["segmentId"]);
         assert_eq!(fs::read(dir.join("00_000.mp4")).unwrap(), completed_before);
         fs::remove_dir_all(root).unwrap();
     }

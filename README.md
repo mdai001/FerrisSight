@@ -4,7 +4,8 @@ An open-source Rust camera gateway and lightweight NVR.
 
 Early-stage: the Rust package provides a small HTTP service, bounded RTSP probing,
 Phase 1B local H.264 recording into independently playable MP4 segments,
-and the Phase 1C bounded UTC minute-session experiment.
+the Phase 1C bounded UTC minute-session experiment, and Phase 2A local retention
+with a durable SQLite upload queue.
 Recording copies compressed video without transcoding; audio is omitted. Camera
 discovery and the Rust ONVIF adapter remain unimplemented.
 
@@ -63,12 +64,17 @@ choose wider binding deliberately. `GET /health` returns
 `{"status":"ok","service":"ferrissight"}`. `GET /api/v1/cameras` returns `[]`.
 Ctrl-C and SIGTERM initiate graceful shutdown.
 
-CLI settings: `--bind`, `--data-dir` (reserved; no files created), `--log-level`.
+CLI settings: `--bind`, `--data-dir` (recording root), `--log-level`,
+`--retention-hours`, `--max-storage-bytes`, `--allow-unuploaded-eviction`, and
+`--upload-enabled` (future uploader placeholder).
 Environment equivalents: `FERRISSIGHT_BIND`, `FERRISSIGHT_DATA_DIR`,
 `FERRISSIGHT_LOG_LEVEL`. Log levels are fixed levels, not arbitrary tracing filters.
 TOML loading is deferred; [config example](examples/config.example.toml) contains
 synthetic design values only. Logs omit configuration values and raw OS errors.
-There is no telemetry or automatic media/cloud upload.
+There is no telemetry or automatic media/cloud upload. The gateway reconciles
+finalized UTC recordings independently and exposes aggregate status through
+`GET /api/v1/storage`. See [local storage](docs/local-storage.md) for conservative
+retention defaults, crash recovery and queue semantics.
 
 ```sh
 cargo fmt --check

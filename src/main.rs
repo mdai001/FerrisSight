@@ -21,14 +21,24 @@ enum Command {
             default_value = "127.0.0.1:8080"
         )]
         bind: SocketAddr,
-        /// Reserved for future local recordings; no files are created in Phase 0.
+        /// Root containing UTC recordings and the local storage control database.
         #[arg(
             long,
             env = "FERRISSIGHT_DATA_DIR",
             hide_env_values = true,
-            default_value = "data"
+            default_value = "recordings"
         )]
         data_dir: PathBuf,
+        #[arg(long, default_value_t = 72)]
+        retention_hours: u32,
+        #[arg(long, default_value_t=100 * 1024 * 1024 * 1024_u64)]
+        max_storage_bytes: u64,
+        /// Explicitly allow dropping pending/failed recordings under capacity pressure.
+        #[arg(long)]
+        allow_unuploaded_eviction: bool,
+        /// Reserved for a future uploader; does not initiate cloud traffic.
+        #[arg(long)]
+        upload_enabled: bool,
         #[arg(
             long,
             env = "FERRISSIGHT_LOG_LEVEL",
@@ -64,9 +74,23 @@ async fn main() -> std::process::ExitCode {
     };
     let Command::Serve {
         bind,
-        data_dir: _data_dir,
+        data_dir,
+        retention_hours,
+        max_storage_bytes,
+        allow_unuploaded_eviction,
+        upload_enabled,
         log_level,
     } = cli.command;
+    let storage_config = ferrissight::storage::local::StorageConfig {
+        retention_hours,
+        max_storage_bytes,
+        protect_unuploaded: !allow_unuploaded_eviction,
+        upload_enabled,
+    };
+    if storage_config.validate().is_err() {
+        eprintln!("gateway invalid_configuration; use --help");
+        return std::process::ExitCode::from(2);
+    }
     // Filter dependencies out: their future transport logs may include network data.
     let filter = tracing_subscriber::filter::Targets::new().with_target("ferrissight", log_level);
     use tracing_subscriber::prelude::*;
@@ -92,11 +116,14 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    let (storage_stop, stopped) = tokio::sync::watch::channel(false);
+    let (storage, storage_task) =
+        ferrissight::storage::service::StorageService::start(data_dir, storage_config, stopped);
     tracing::info!(service = "gateway", event = "started");
-    if ferrissight::server::serve(listener, shutdown)
-        .await
-        .is_err()
-    {
+    let result = ferrissight::server::serve_with_storage(listener, shutdown, storage).await;
+    let _ = storage_stop.send(true);
+    let _ = storage_task.await;
+    if result.is_err() {
         tracing::error!(service = "gateway", event = "server_failed");
         return std::process::ExitCode::FAILURE;
     }

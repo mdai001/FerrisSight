@@ -7,3 +7,12 @@ port = 554
 path = "/example-stream"
 camera_username = "example"
 camera_password = "CHANGE_ME"
+
+
+# Storage design values map to StorageConfig and gateway CLI options.
+# This example is synthetic documentation; automatic TOML loading is not implemented.
+[storage]
+retention_hours = 72
+max_storage_bytes = 107374182400
+protect_unuploaded = true
+upload_enabled = false

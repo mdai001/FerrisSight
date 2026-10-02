@@ -144,3 +144,21 @@ are excluded from package contents and external reviews. No cloud credentials,
 account inventory, telemetry or media upload is introduced. Future protected
 production credentials, complete binary release audits and retention remain
 separate work.
+
+
+## Phase 2A retention and queue boundary
+
+The local SQLite queue persists generated segment/CameraId values, strict relative
+UTC paths, media timestamps/size, upload states and retry counters. Optional remote
+locators are opaque, validated and redacted from Debug and API output. Upload-job
+Debug excludes paths. No endpoints, account identity, raw errors, OAuth secrets or
+camera-derived content enter the database. Segment IDs remain local and are never
+installation tracking identifiers.
+
+Only aggregate storage status is public. The recording root is a trusted local
+application directory; symlinks and traversal are rejected. SQLite control files,
+WAL/journals, locks and test media are ignored and excluded from source packaging.
+Retention defaults protect unuploaded recordings, never remove partial/uploading
+files, and expose pressure instead of silently dropping protected media. Backend
+credentials, remote authorization and optional integrity hashing remain separate
+Phase 2B work. There is still no telemetry or automatic cloud upload.

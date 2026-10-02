@@ -49,22 +49,26 @@ FFmpeg, GStreamer or retina adapters own process/library details; core does not.
 
 `ferrissight::storage` defines generated recording IDs, minimal metadata and store
 operations. Phase 1B adds an H.264 MP4 segment sink with keyframe boundaries, timestamp
-validation and finalized-file publication. It contains no database or cloud integration. Future
-retention deletion must remove media as well as metadata. Uploads require explicit
+validation and finalized-file publication. Phase 2A adds a SQLite inventory/upload queue and independent retention
+coordinator. Retention removes media and metadata with recoverable deletion intents.
+No cloud integration is implemented. Uploads require explicit
 configuration, minimum OAuth scopes and protected tokens.
 
 `ferrissight::server` owns allowlisted HTTP responses and serves a listener with a
 caller-provided shutdown future. The binary owns CLI/environment configuration,
 privacy-filtered tracing, bind and Ctrl-C/SIGTERM shutdown. Local loopback is the
 default; exposing an unauthenticated listener requires an explicit bind argument.
-The data-directory option is reserved and unused until recording is implemented.
+The data-directory option selects the recording root used by the independent
+storage coordinator and its safe aggregate status endpoint.
 
 Every layer follows [privacy requirements](privacy.md). No raw transport errors
-enter public responses or logs. Endpoint validation, credential storage and real
-connection lifecycle handling are future implementation work, not working features.
+enter public responses or logs. A production Rust ONVIF connection flow and production credential-store adapter
+remain future work.
 
 Phase 1C adds an explicit bounded UTC-minute session scheduler in the media layer.
 Each natural minute owns a fresh RTSP session and immutable MP4/UTC metadata unit;
 failed windows remain visible and later windows still attempt recording. It is an
 interoperability experiment, with no daemon, upload or retention work. See
 [UTC minute recording](utc-minute-recording.md) for timing and validation limits.
+
+Phase 2A storage semantics and recovery are documented in [local storage](local-storage.md).

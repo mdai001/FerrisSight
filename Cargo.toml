@@ -21,13 +21,16 @@ async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 clap = { version = "4", features = ["derive", "env"] }
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
 retina = "0.4.20"
 url = "2"
 futures-util = "0.3"
 mp4 = "0.14"
 bytes = "1"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+
+rusqlite = { version = "0.40", features = ["bundled"] }
+fs2 = "0.4"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
