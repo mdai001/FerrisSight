@@ -91,3 +91,7 @@ For the minute-session lifecycle and validation limits, see [UTC minute recordin
 
 For bounded minute-session versus persistent-session results, see
 [session recording comparison](docs/session-recording-comparison.md).
+
+Experimental recorded-media source preparation is documented in
+[Recording sources](docs/recording-sources.md). The Tapo skeleton performs no network
+operations and is not part of production recording or synchronization.

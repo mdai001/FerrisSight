@@ -162,3 +162,14 @@ Retention defaults protect unuploaded recordings, never remove partial/uploading
 files, and expose pressure instead of silently dropping protected media. Backend
 credentials, remote authorization and optional integrity hashing remain separate
 Phase 2B work. There is still no telemetry or automatic cloud upload.
+
+## Experimental recorded-media sources
+
+Vendor recording credentials are separate from ONVIF/RTSP credentials and are
+never serialized. Opaque source IDs, session tokens and media chunks redact Debug;
+source errors contain fixed categories only. The experimental Tapo source performs
+no network operations, authentication, decryption, file writes or synchronization.
+Future imports must use generated CameraId/RecordingIds, private staging and bounded
+cancellation. Raw responses, media content, vendor identifiers and fingerprints must
+not appear in public logs, API status, fixtures or diagnostics. Internal protocol
+research stays ignored; no upstream fixture or actual camera data is incorporated.

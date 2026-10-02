@@ -6,3 +6,5 @@ pub mod media;
 pub mod onvif;
 pub mod server;
 pub mod storage;
+
+pub mod recording_source;
