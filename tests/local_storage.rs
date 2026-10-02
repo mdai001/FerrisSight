@@ -126,6 +126,56 @@ fn uploading_recovers_and_stale_completion_is_fenced() {
     assert_eq!(store.maintain(1000).unwrap().failed_count, 1);
 }
 #[test]
+fn local_expiry_preserves_remote_identity_and_capture_times_after_restart() {
+    let f = Fixture::new();
+    let path = f.segment(60_000);
+    let mut store = f.store();
+    let id = store.enqueue(&path).unwrap();
+    // Upload well after capture: retention must never replace media time with upload time.
+    let job = store.claim_next(7_200_000).unwrap().unwrap();
+    let expected = (
+        job.camera_id.to_string(),
+        job.start_unix_ms,
+        job.end_unix_ms,
+        job.size_bytes as i64,
+        "synthetic-remote-object".to_owned(),
+        "uploaded".to_owned(),
+        "deleted".to_owned(),
+    );
+    store
+        .uploaded(
+            &job,
+            RemoteObjectId::new("synthetic-remote-object".into()).unwrap(),
+        )
+        .unwrap();
+    store.maintain(7_200_000).unwrap();
+    assert!(!f.root.join(&path).exists());
+    drop(store);
+    let mut store = f.store();
+    store.maintain(7_200_000).unwrap();
+    assert!(store.claim_next(7_200_000).unwrap().is_none());
+    let db = rusqlite::Connection::open(f.root.join(".storage/queue.sqlite3")).unwrap();
+    let preserved = db
+        .query_row(
+            "SELECT camera_id,start_ms,end_ms,size_bytes,remote_object_id,state,local_state
+             FROM recordings WHERE segment_id=?1",
+            [id.to_string()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(preserved, expected);
+}
+#[test]
 fn retention_uses_authoritative_end_time_and_protects_unuploaded() {
     let f = Fixture::new();
     let uploaded = f.segment(0);

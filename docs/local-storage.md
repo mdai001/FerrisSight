@@ -125,12 +125,107 @@ protected/unprotected/uploading cases; unsafe paths/partials; every deletion cra
 point; same-name replacement after a crash; directory recreation during recording;
 restored files; database locks/corruption; failed tombstone commits; safe API status;
 and recovery after forcibly killing a separate process before SQLite cleanup.
-Validation passed: formatting, strict workspace Clippy, 46 tests and the workspace
+Validation passed: formatting, strict workspace Clippy, 47 tests and the workspace
 build. Two gateway startup/shutdown cycles on the workspace filesystem also passed,
 including safe status responses and a SQLite integrity check. The package listing
 contained 36 entries and no private storage or internal artifacts. No real-camera
 recordings were used for this phase. These bounded tests do not substitute for
 physical power-loss qualification.
+
+## Future independent remote retention
+
+This section specifies a future contract, not implemented cloud behavior. Local
+and remote copies are independently governed replicas of one logical segment.
+For example, local retention can be 72 hours while a remote backend retains 30 days.
+Local expiry must not schedule remote deletion; remote expiry must not remove a
+still-retained local copy. Explicit user-requested deletion of both replicas would
+be a separate operation with its own authorization.
+
+Both policies use authoritative capture `end_ms` as their age anchor (the last
+media boundary of the segment), preserving `start_ms` for timeline queries:
+`expires_at_ms = end_ms + retention_duration_ms`. Provider creation/upload times,
+filenames and folder names never determine age. Delayed uploads retain the original
+capture time. A backlog item already expired under an enabled remote policy is
+skipped for that backend without deleting its local copy. Do not upload and
+immediately delete it in a recurring loop. Unknown/invalid capture time fails
+closed for deletion and is reported as a safe status category. Evaluate expiry only
+with a trusted UTC clock; suspend destructive work after an unexplained wall-clock
+jump or inconsistent capture time until reconciled. Retry delays use monotonic
+time while the process runs. Timezone/DST changes do not change UTC age.
+
+The current v1 index already retains segment ID, CameraId, capture start/end,
+size, upload result and remote object ID after local deletion; only `local_state`
+changes. A regression test verifies this across restart after a delayed upload.
+These rows are the migration source, not a complete remote lifecycle schema.
+Before implementing cloud retention, migrate to separate remote replica records:
+
+| Future field | Purpose |
+| --- | --- |
+| `segment_id`, `backend_instance_id` | Unique replica key; backend instance is a generated local ID, not an account identifier |
+| `remote_object_id` | Stable opaque object ID returned by the backend |
+| ownership provenance | Durable proof of FerrisSight creation or explicit adoption, bound to backend scope |
+| remote state | `present`, `delete_pending`, `deleting`, `retry_wait`, `deleted`, `failed` |
+| deletion attempt, next retry, revision | Durable scheduling and fencing against stale completions |
+| policy revision, deletion reason | Recheck policy changes and distinguish retention from explicit user deletion |
+
+The logical segment retains authoritative capture timestamps independently of
+local file presence. Upload history is not remote presence: successful upload
+remains historical fact after remote expiry. Keep a terminal remote tombstone so
+reconciliation does not re-upload deliberately expired media or repeatedly delete
+it. Index compaction must preserve ownership/identity and must not discard records
+while any replica or upload/deletion work is still live. Restored v1 databases
+cannot safely infer a backend scope for old locators; leave remote deletion disabled
+until their association and ownership have been verified.
+
+A future backend-neutral operation is conceptually
+`async fn delete(&self, remote_object_id: &RemoteObjectId) -> Result<(), DeleteError>`.
+The backend instance binds the destination scope; the retention layer checks the
+managed replica record before calling it. Never infer ownership from matching
+names, scan unrelated user files or delete by a name search. Lost local ownership
+records must not trigger broad cloud discovery/deletion. Any recovery enumeration
+must be limited to an explicitly managed scope and verify ownership evidence.
+
+Remote deletion uses a durable, bounded asynchronous worker with its own retry
+budget, independent of recording and upload work. Transient errors use backoff;
+authentication/permission errors pause work for that backend without claiming the
+object was deleted. A verified absent object is idempotent success, but an ambiguous
+not-found response that could mean loss of access requires reconciliation. Commit
+intent before calling the provider, then persist completion. A crash after provider
+success may require one more idempotent attempt; exactly-once remote effects are
+not assumed. Remote recording objects are immutable: never overwrite or reassign
+a locator while deletion is pending or uncertain. A replacement upload needs a
+new remote identity. Providers whose locators can be reused require a conditional
+version/generation delete extension; disable automatic deletion when safe identity
+cannot be guaranteed. A local revision fence alone cannot cancel a remote request.
+Recheck current policy and replica revision before issuing deletion;
+a policy change cannot undo a provider deletion already in flight.
+
+Track FerrisSight-created UTC folders by returned IDs and creation provenance.
+Prune only empty managed folders after child jobs finish, coordinate with uploads,
+and use a provider-safe non-recursive empty-folder operation where available. If
+emptiness cannot be guaranteed against concurrent writers, skip folder cleanup.
+Never recursively remove the user-selected backup root or user-created folders.
+
+Future authenticated settings should separate local keep duration and maximum
+bytes from each backend's backup-enabled flag and optional remote keep duration.
+A null remote duration disables automatic remote expiry; a positive duration enables
+it explicitly. Enabling backup alone must not silently enable remote deletion.
+For example: local keep 72 hours / maximum 100 GiB, Drive backup enabled / remote
+keep 30 days. Validate positive durations and overflow-safe arithmetic, and persist
+policy revisions. These are design fields, not current CLI/TOML options; no mobile
+UI is included. Decommissioning a backend requires an explicit choice to finish
+cleanup or abandon management without deleting its remote objects. Exhausted or
+permanent failures remain visible and stop automatic retries; do not label them
+deleted or discard ownership records merely to compact the database. Terminal
+compaction and minimal tombstone retention need a separate bounded storage design.
+Remote IDs, scope handles and provider errors remain redacted;
+status APIs expose only safe aggregate work counts and failure categories.
+
+Future validation must cover delayed uploads, both directions of replica lifecycle
+independence, ownership rejection, two backend scopes, interrupted deletion/restart,
+stale completions, retry backoff, ambiguous missing objects, policy changes,
+no re-upload after expiry, remote locator reuse, clock jumps, backend decommissioning,
+and empty-folder/upload races.
 
 ## Phase 2B decisions
 
