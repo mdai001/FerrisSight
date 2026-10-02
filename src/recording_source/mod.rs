@@ -224,6 +224,7 @@ pub struct RecordingDownload {
     session: Box<dyn RecordingMediaSession>,
     cancellation: Cancellation,
     idle_timeout: Duration,
+    deadline: tokio::time::Instant,
     terminal: Option<Result<(), SourceError>>,
 }
 impl RecordingDownload {
@@ -233,8 +234,27 @@ impl RecordingDownload {
         cancellation: Cancellation,
         idle_timeout: Duration,
     ) -> Result<Self, SourceError> {
+        Self::with_deadline(
+            media,
+            session,
+            cancellation,
+            idle_timeout,
+            Duration::from_secs(300),
+        )
+    }
+    pub fn with_deadline(
+        media: RecordingMedia,
+        session: Box<dyn RecordingMediaSession>,
+        cancellation: Cancellation,
+        idle_timeout: Duration,
+        total_timeout: Duration,
+    ) -> Result<Self, SourceError> {
         cancellation.check()?;
-        if idle_timeout.is_zero() || idle_timeout > Duration::from_secs(300) {
+        if idle_timeout.is_zero()
+            || idle_timeout > Duration::from_secs(300)
+            || total_timeout.is_zero()
+            || total_timeout > Duration::from_secs(300)
+        {
             return Err(SourceError::InvalidRequest);
         }
         Ok(Self {
@@ -242,6 +262,7 @@ impl RecordingDownload {
             session,
             cancellation,
             idle_timeout,
+            deadline: tokio::time::Instant::now() + total_timeout,
             terminal: None,
         })
     }
@@ -252,6 +273,7 @@ impl RecordingDownload {
         let result = tokio::select! {
             biased;
             _ = self.cancellation.cancelled() => Err(SourceError::Cancelled),
+            _ = tokio::time::sleep_until(self.deadline) => Err(SourceError::Timeout),
             result = tokio::time::timeout(self.idle_timeout, self.session.next_chunk()) => result.unwrap_or(Err(SourceError::Timeout)),
         };
         match &result {
@@ -265,9 +287,13 @@ impl RecordingDownload {
     /// Ordinary drop only drops the owned session, without cancelling the caller token.
     pub async fn cancel(mut self) -> Result<(), SourceError> {
         self.cancellation.cancel();
-        tokio::time::timeout(self.idle_timeout, self.session.close())
-            .await
-            .unwrap_or(Err(SourceError::Timeout))
+        tokio::time::timeout_at(
+            self.deadline
+                .min(tokio::time::Instant::now() + self.idle_timeout),
+            self.session.close(),
+        )
+        .await
+        .unwrap_or(Err(SourceError::Timeout))
     }
 }
 #[async_trait]
@@ -319,3 +345,8 @@ pub trait RecordingImport: Send + Sync {
         audio: ImportAudioPolicy,
     ) -> Result<ImportedRecording, SourceError>;
 }
+
+pub mod protocol;
+pub mod query;
+
+pub mod journal;
